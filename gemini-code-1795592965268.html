@@ -1,0 +1,1352 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>大樂透科學選號 Pro</title>
+
+  <!-- PWA & iOS / Android 加入主畫面設定 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="大樂透Pro">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#020617">
+  <link id="apple-touch-icon" rel="apple-touch-icon">
+  <link id="pwa-manifest" rel="manifest">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background-color: #020617;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ball {
+      width: 38px; height: 38px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 0.95rem;
+      box-shadow: inset -3px -3px 6px rgba(0,0,0,0.35), 2px 2px 5px rgba(0,0,0,0.25);
+      transition: all 0.18s ease; user-select: none;
+    }
+    .ball-sm { width: 30px; height: 30px; font-size: 0.78rem; }
+    .ball-anchor { background: linear-gradient(135deg, #ec4899, #8b5cf6); color: #fff; box-shadow: 0 0 12px rgba(236,72,153,0.65); }
+    .ball-repeat { background: linear-gradient(135deg, #10b981, #059669); color: #fff; box-shadow: 0 0 10px rgba(16,185,129,0.55); }
+    .ball-hot { background: linear-gradient(135deg, #ff7e5f, #feb47b); color: #fff; }
+    .ball-normal { background: linear-gradient(135deg, #f6d365, #fda085); color: #1e293b; }
+    .ball-cold { background: linear-gradient(135deg, #89f7fe, #66a6ff); color: #0f172a; }
+    .ball-selected { outline: 3px solid #fbbf24; transform: scale(1.08); }
+    .tab-active { border-bottom: 3px solid #f59e0b; color: #fbbf24; font-weight: 700; background: rgba(245,158,11,0.1); }
+    /* 隱藏橫向捲軸但保留滑動功能 */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="min-h-screen p-3 md:p-6">
+
+  <div class="max-w-6xl mx-auto space-y-4 md:space-y-5">
+    <!-- Top Header -->
+    <header class="bg-slate-900 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-xl flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
+      <div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="px-2.5 py-0.5 text-xs font-extrabold bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 rounded-md">LIVE SYNC PWA</span>
+          <h1 class="text-lg md:text-2xl font-extrabold text-amber-400 tracking-wide">大樂透科學選號與數據分析 Pro</h1>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-slate-400">
+          <span id="syncStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800 text-amber-300 border border-slate-700">
+            <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span> 正在連線 draws.json...
+          </span>
+          <span>最新期別：<strong class="text-emerald-400" id="headerLatestInfo">載入中</strong>（共 <span id="headerTotalDraws">-</span> 期）</span>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-2 w-full lg:w-auto justify-end">
+        <button onclick="syncRemoteDraws(true)" class="px-3 py-2 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 font-bold text-xs rounded-xl transition">
+          ☁️ 立即重新同步
+        </button>
+        <button onclick="openAddDrawModal()" class="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow transition">
+          ➕ 手動補登
+        </button>
+      </div>
+    </header>
+
+    <!-- 上期連莊診斷 & 下期風向儀表板 -->
+    <section class="bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950/40 p-4 md:p-5 rounded-2xl border border-emerald-500/30 shadow-lg space-y-4">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+        <div class="lg:col-span-5 space-y-2 border-b lg:border-b-0 lg:border-r border-slate-800 pb-3 lg:pb-0 lg:pr-4">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-emerald-400" id="latestDrawTitle">📌 最新一期獎號與「連莊」診斷</span>
+            <span class="text-[11px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded" id="overallRepeatRateBadge">連莊率計算中</span>
+          </div>
+          <div id="lastDrawRepeatBar" class="flex flex-wrap gap-2 pt-1"></div>
+          <p class="text-[11px] text-slate-400">💡 點擊任一顆球可直接將它鎖定為下期「連莊膽碼」。</p>
+        </div>
+
+        <div class="lg:col-span-7 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-amber-400" id="nextDrawTitle">⏱️ 下期「黃金週期回補 ＋ 上期拖牌」TOP 6 候選</span>
+            <span class="text-[11px] text-slate-400">遺漏 ≈ 平均間隔 ＋ 跨期拖牌</span>
+          </div>
+          <div id="cycleDueBar" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 pt-1"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5 大功能頁籤導覽 -->
+    <nav class="flex border-b border-slate-800 bg-slate-900/80 rounded-t-xl px-2 gap-1 md:gap-4 text-xs md:text-sm overflow-x-auto no-scrollbar">
+      <button onclick="switchTab('generator')" id="tab-generator" class="py-3.5 px-3 tab-active whitespace-nowrap transition rounded-t-lg">
+        🎯 1. 四維選號 & 對獎
+      </button>
+      <button onclick="switchTab('wheel')" id="tab-wheel" class="py-3.5 px-3 text-slate-400 hover:text-slate-200 whitespace-nowrap transition rounded-t-lg">
+        🧬 2. 旋轉矩陣包牌
+      </button>
+      <button onclick="switchTab('cycle')" id="tab-cycle" class="py-3.5 px-3 text-slate-400 hover:text-slate-200 whitespace-nowrap transition rounded-t-lg">
+        🔁 3. 連莊 & 重逢週期
+      </button>
+      <button onclick="switchTab('radar')" id="tab-radar" class="py-3.5 px-3 text-slate-400 hover:text-slate-200 whitespace-nowrap transition rounded-t-lg">
+        📡 4. 共現 & 拖牌雷達
+      </button>
+      <button onclick="switchTab('history')" id="tab-history" class="py-3.5 px-3 text-slate-400 hover:text-slate-200 whitespace-nowrap transition rounded-t-lg">
+        📊 5. 尾數圖譜 & 資料庫
+      </button>
+    </nav>
+
+    <!-- ================= TAB 1: 四維智慧選號 & 收藏對獎 ================= -->
+    <div id="view-generator" class="space-y-5">
+      <section class="bg-slate-900 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-lg space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div class="bg-slate-950/80 p-3 rounded-xl border border-emerald-500/30">
+            <label class="block text-xs font-bold text-emerald-400 mb-1.5">🔁 1. 上期獎號「連莊」設定</label>
+            <select id="repeatMode" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white outline-none">
+              <option value="smart_1" selected>✅ 智慧連莊：每注保留 0~1 顆上期獎號</option>
+              <option value="force_1">🔒 強制連莊：每注必含 1 顆上期獎號</option>
+              <option value="exclude">🚫 完全排除上期開過號碼</option>
+            </select>
+          </div>
+
+          <div class="bg-slate-950/80 p-3 rounded-xl border border-sky-500/30">
+            <label class="block text-xs font-bold text-sky-400 mb-1.5">⏱️ 2. 間隔週期「回補」加權</label>
+            <select id="cycleMode" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white outline-none">
+              <option value="due_boost" selected>⏰ 鎖定黃金回補期 (遺漏 ≈ 平均間隔)</option>
+              <option value="overdue_boost">🌋 鎖定超跌反彈 (遺漏 > 平均1.4倍)</option>
+              <option value="off">🚫 關閉週期加權</option>
+            </select>
+          </div>
+
+          <div class="bg-slate-950/80 p-3 rounded-xl border border-amber-500/30">
+            <label class="block text-xs font-bold text-amber-400 mb-1.5">🔗 3. 同期共現 & 尾數加權</label>
+            <select id="coWeightMode" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white outline-none">
+              <option value="cycle_pair" selected>🚀 共現次數 ＋ 雙星重逢週期雙加權</option>
+              <option value="tail_hot">🔥 強勢尾數鎖定 (自動抓取前 3 強尾數)</option>
+              <option value="off">🚫 僅依單號冷熱獨立抽樣</option>
+            </select>
+          </div>
+
+          <div class="bg-slate-950/80 p-3 rounded-xl border border-pink-500/30">
+            <label class="block text-xs font-bold text-pink-300 mb-1.5">🎯 4. 指定核心膽碼 (錨點號)</label>
+            <select id="anchorNumber" onchange="updateAnchorPreview()" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white outline-none">
+              <option value="0">🎲 不鎖定膽碼 (全自動四維尋優)</option>
+            </select>
+            <p id="anchorCompanionsHint" class="text-[11px] text-slate-400 mt-1.5"></p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3.5 pt-3 border-t border-slate-800">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">生成注數</label>
+            <select id="ticketCount" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs outline-none">
+              <option value="5" selected>5 注 (標準配置 NT$250)</option>
+              <option value="8">8 注 (進階配置 NT$400)</option>
+              <option value="10">10 注 (完整配置 NT$500)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">6 碼總和區間 (中位數150)</label>
+            <select id="sumRange" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs outline-none">
+              <option value="115-185" selected>115 ~ 185 (涵蓋約 75% 常態期數)</option>
+              <option value="125-175">125 ~ 175 (嚴格核心收斂)</option>
+              <option value="all">不限制總和</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">奇偶比與大小比限制</label>
+            <select id="ratioFilter" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs outline-none">
+              <option value="normal" selected>鎖定 3:3、4:2 或 2:4</option>
+              <option value="strict">嚴格鎖定 3:3 黃金平衡</option>
+              <option value="all">不限制</option>
+            </select>
+          </div>
+          <div class="flex flex-col justify-center gap-1.5 pt-1">
+            <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+              <input type="checkbox" id="allowConsecutive" checked class="w-4 h-4 accent-amber-400 rounded"> 允許二連號
+            </label>
+            <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+              <input type="checkbox" id="antiShare" checked class="w-4 h-4 accent-amber-400 rounded"> 防撞號 (含2顆以上32~49大號)
+            </label>
+          </div>
+        </div>
+
+        <button onclick="generateSmartTickets()" class="w-full bg-gradient-to-r from-emerald-500 via-amber-500 to-pink-500 hover:opacity-95 text-slate-950 font-extrabold py-3 rounded-xl shadow-lg transition text-sm md:text-base">
+          ⚡ 啟動四維機率模型（連莊 × 週期 × 共現 × 拖牌）運算選號
+        </button>
+      </section>
+
+      <!-- 推薦結果與回測 -->
+      <section class="bg-slate-900 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-lg space-y-4">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h2 class="text-base font-bold text-slate-100">運算推薦注單</h2>
+            <p id="filterStats" class="text-xs text-slate-400">準備就緒</p>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="saveAllCurrentTickets()" class="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-bold">
+              ⭐ 全部加入收藏夾
+            </button>
+            <button onclick="backtestCurrentTickets()" class="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg text-xs font-bold">
+              🔍 歷史回測對獎
+            </button>
+          </div>
+        </div>
+        <div id="backtestBanner" class="hidden bg-emerald-950/60 border border-emerald-500/40 rounded-xl p-3.5 text-xs space-y-1"></div>
+        <div id="resultsContainer" class="space-y-3"></div>
+      </section>
+
+      <!-- 我的收藏注單與自動對獎計算機 -->
+      <section class="bg-slate-900 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-lg space-y-4">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h2 class="text-base font-bold text-amber-400">⭐ 我的收藏注單 & 期別自動對獎機</h2>
+            <p class="text-xs text-slate-400">資料存於手機本地端，自動同步最新期別並核對中獎</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="checkDrawSelect" onchange="renderSavedTickets()" class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 outline-none max-w-[210px]"></select>
+            <button onclick="clearSavedTickets()" class="px-2.5 py-1.5 bg-red-500/20 text-red-300 border border-red-500/30 rounded-lg text-xs whitespace-nowrap">清空</button>
+          </div>
+        </div>
+        <div id="savedTicketsContainer" class="space-y-2.5"></div>
+      </section>
+    </div>
+
+    <!-- ================= TAB 2: 旋轉矩陣聰明包牌系統 ================= -->
+    <div id="view-wheel" class="hidden space-y-5">
+      <section class="bg-slate-900 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-lg space-y-4">
+        <div class="flex flex-col md:flex-row justify-between md:items-center gap-3 border-b border-slate-800 pb-3">
+          <div>
+            <h2 class="text-lg font-bold text-amber-400">🧬 旋轉矩陣聰明包牌系統（Wheeling System）</h2>
+            <p class="text-xs text-slate-400 mt-0.5">
+              選 10 碼全連碰需 210 注 ($10,500 元)，透過覆蓋矩陣縮水至 <strong>7 注 ($350 元)</strong>，大幅降低包牌成本並保留高覆蓋率。
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="loadPresetWheel('top10')" class="px-3 py-1.5 bg-orange-500/20 text-orange-300 border border-orange-500/40 rounded-lg text-xs font-bold">🔥 載入 TOP 10 熱門號</button>
+            <button onclick="loadPresetWheel('teamHot')" class="px-3 py-1.5 bg-pink-500/20 text-pink-300 border border-pink-500/40 rounded-lg text-xs font-bold">🔗 載入頭號人氣王＋拍檔</button>
+            <button onclick="loadPresetWheel('cycle10')" class="px-3 py-1.5 bg-sky-500/20 text-sky-300 border border-sky-500/40 rounded-lg text-xs font-bold">⏰ 載入下期回補＋拖牌10碼</button>
+            <button onclick="clearWheelSelection()" class="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg text-xs">重選</button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2 text-xs bg-slate-950 px-4 py-2.5 rounded-xl border border-slate-800">
+          <span>目前已點選：<strong id="wheelCountText" class="text-amber-400 text-sm">0</strong> / 10 碼（請點選 8 ~ 12 碼）</span>
+          <span id="wheelCostCompare" class="text-emerald-400 font-bold"></span>
+        </div>
+
+        <div id="wheelBallGrid" class="grid grid-cols-7 sm:grid-cols-10 gap-2 bg-slate-950 p-3 md:p-4 rounded-xl border border-slate-800"></div>
+
+        <button onclick="generateWheelTickets()" class="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:opacity-95 text-slate-950 font-extrabold py-3 rounded-xl shadow-lg text-sm">
+          🧬 立即執行旋轉矩陣縮水運算
+        </button>
+
+        <div id="wheelResultsBox" class="space-y-3 pt-2"></div>
+      </section>
+    </div>
+
+    <!-- ================= TAB 3: 連莊率與雙星重逢間隔週期 ================= -->
+    <div id="view-cycle" class="hidden space-y-5">
+      <section class="bg-slate-900 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-lg space-y-4">
+        <div class="flex flex-col md:flex-row justify-between md:items-center gap-3 border-b border-slate-800 pb-3">
+          <div>
+            <h2 class="text-lg font-bold text-emerald-400">🔁 單號「隔期連莊率」與「平均出現間隔週期」</h2>
+            <p class="text-xs text-slate-400">分析每顆號碼開出後下一期繼續連莊的機率，以及平均間隔幾期會再開</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="renderCycleTable('due')" class="px-3 py-1.5 bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded-lg text-xs font-bold">依「週期即將到期」</button>
+            <button onclick="renderCycleTable('repeat')" class="px-3 py-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-bold">依「連莊率最高」</button>
+            <button onclick="renderCycleTable('freq')" class="px-3 py-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-bold">依「總開出次數」</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto max-h-[420px]">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="border-b border-slate-800 text-slate-400 bg-slate-950 sticky top-0">
+                <th class="p-3">號碼</th>
+                <th class="p-3 text-center">出現次數</th>
+                <th class="p-3 text-center">直接連莊 (連莊率)</th>
+                <th class="p-3 text-center">平均間隔</th>
+                <th class="p-3 text-center">目前遺漏</th>
+                <th class="p-3">週期狀態診斷</th>
+                <th class="p-3 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody id="cycleTableBody" class="divide-y divide-slate-800/60"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="bg-slate-900 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-lg space-y-4">
+        <h2 class="text-lg font-bold text-amber-400 border-b border-slate-800 pb-2">⏱️ 雙星「平均隔幾期會再一起出現？」重逢週期排行榜</h2>
+        <div id="pairCycleGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5"></div>
+      </section>
+    </div>
+
+    <!-- ================= TAB 4: 單號共現與隔期拖牌雙雷達 ================= -->
+    <div id="view-radar" class="hidden space-y-5">
+      <section class="bg-slate-900 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-lg space-y-4">
+        <div class="flex flex-col md:flex-row justify-between md:items-center gap-3 border-b border-slate-800 pb-3">
+          <div>
+            <h2 class="text-lg font-bold text-amber-400">📡 單號 360° 雙雷達（同期共現拍檔 ＆ 隔期下期拖牌）</h2>
+            <p class="text-xs text-slate-400">點擊下方任一號碼球，剖析它的空間拍檔與時間序列拖牌</p>
+          </div>
+          <div id="radarQuickButtons" class="flex flex-wrap gap-2"></div>
+        </div>
+        <div id="radarBallGrid" class="flex flex-wrap gap-2 justify-center bg-slate-950 p-3 md:p-4 rounded-xl border border-slate-800"></div>
+        <div id="radarDetailBox" class="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-800 space-y-4"></div>
+      </section>
+    </div>
+
+    <!-- ================= TAB 5: 冷熱尾數圖譜與歷史資料庫 ================= -->
+    <div id="view-history" class="hidden space-y-5">
+      <section class="bg-slate-900 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-lg space-y-4">
+        <h2 class="text-base font-bold text-amber-400 border-b border-slate-800 pb-2">🔥 0尾 ~ 9尾 家族強弱勢分佈圖譜</h2>
+        <div id="tailStatsGrid" class="grid grid-cols-2 sm:grid-cols-5 gap-3"></div>
+      </section>
+
+      <section class="bg-slate-900 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-lg space-y-4">
+        <div class="flex flex-col md:flex-row justify-between md:items-center gap-3 border-b border-slate-800 pb-3">
+          <h2 class="text-base font-bold text-slate-100">📅 2026 大樂透完整開獎資料庫（與 draws.json 即時同步）</h2>
+          <input type="text" id="historySearch" oninput="renderHistoryTable()" placeholder="輸入號碼或期別搜尋 (如: 23 或 108)..." class="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs md:text-sm outline-none focus:border-amber-400">
+        </div>
+        <div class="overflow-x-auto max-h-[500px]">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="border-b border-slate-800 text-slate-400 bg-slate-950 sticky top-0">
+                <th class="p-3">期別</th>
+                <th class="p-3">開獎日期</th>
+                <th class="p-3">正選號碼（綠球代表與上一期連莊）</th>
+                <th class="p-3 text-center">特別號</th>
+                <th class="p-3 text-center">連莊數</th>
+                <th class="p-3 text-center">總和</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody" class="divide-y divide-slate-800/60"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- 手動補登開獎期別 Modal -->
+  <div id="addDrawModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+        <h3 class="text-base font-bold text-amber-400">➕ 手動補登開獎號碼</h3>
+        <button onclick="closeAddDrawModal()" class="text-slate-400 hover:text-white text-sm">✕</button>
+      </div>
+      <div class="grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <label class="block text-slate-400 mb-1">期別編號</label>
+          <input id="newDrawId" type="text" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">開獎日期</label>
+          <input id="newDrawDate" type="text" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white">
+        </div>
+      </div>
+      <div class="text-xs">
+        <label class="block text-slate-400 mb-1">6 個正選號碼（請用逗號或空白分隔）</label>
+        <input id="newDrawNums" type="text" placeholder="例如: 04, 15, 25, 29, 35, 48" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white">
+      </div>
+      <div class="text-xs">
+        <label class="block text-slate-400 mb-1">特別號 (1 碼)</label>
+        <input id="newDrawSp" type="number" min="1" max="49" placeholder="例如: 16" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white">
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeAddDrawModal()" class="px-4 py-2 bg-slate-800 rounded-lg text-xs">取消</button>
+        <button onclick="submitNewDraw()" class="px-4 py-2 bg-emerald-500 text-slate-950 font-bold rounded-lg text-xs">儲存並重算全模型</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 0. 動態生成 PWA Manifest 與 iOS 主畫面專屬高解析圖示 (無需額外圖檔)
+    // =========================================================================
+    function setupPWA() {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        // 深邃星空背景
+        const bgGrad = ctx.createLinearGradient(0, 0, 512, 512);
+        bgGrad.addColorStop(0, '#0f172a');
+        bgGrad.addColorStop(1, '#020617');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, 512, 512);
+
+        // 金色發光彩球
+        const ballGrad = ctx.createRadialGradient(210, 190, 30, 256, 256, 190);
+        ballGrad.addColorStop(0, '#fde047');
+        ballGrad.addColorStop(0.55, '#f59e0b');
+        ballGrad.addColorStop(1, '#b45309');
+        ctx.beginPath();
+        ctx.arc(256, 256, 185, 0, Math.PI * 2);
+        ctx.fillStyle = ballGrad;
+        ctx.fill();
+
+        // 中央白色號碼圈
+        ctx.beginPath();
+        ctx.arc(256, 256, 108, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        // 文字標誌
+        ctx.fillStyle = '#0f172a';
+        ctx.font = '900 105px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('49', 256, 264);
+
+        const iconDataUrl = canvas.toDataURL('image/png');
+        document.getElementById('apple-touch-icon').href = iconDataUrl;
+
+        const manifest = {
+          name: '大樂透科學選號 Pro',
+          short_name: '大樂透Pro',
+          start_url: './',
+          display: 'standalone',
+          background_color: '#020617',
+          theme_color: '#020617',
+          icons: [{ src: iconDataUrl, sizes: '512x512', type: 'image/png' }]
+        };
+        const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+        document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
+      } catch (e) {
+        console.warn('PWA icon init skipped:', e);
+      }
+    }
+
+    // =========================================================================
+    // 1. 內建最新 60 期基準資料庫 (截至 2026/11/24 第 115000108 期) 作為離線備援
+    // =========================================================================
+    const FALLBACK_DRAWS = [
+      { id: "115000108", date: "2026/11/24", nums: [10, 11, 23, 24, 33, 42], sp: 40 },
+      { id: "115000107", date: "2026/11/20", nums: [1, 2, 4, 12, 16, 38], sp: 44 },
+      { id: "115000106", date: "2026/11/17", nums: [3, 14, 15, 23, 43, 48], sp: 18 },
+      { id: "115000105", date: "2026/11/13", nums: [7, 8, 13, 15, 25, 46], sp: 43 },
+      { id: "115000104", date: "2026/11/10", nums: [11, 23, 30, 32, 40, 41], sp: 28 },
+      { id: "115000103", date: "2026/11/06", nums: [5, 9, 26, 32, 41, 48], sp: 23 },
+      { id: "115000102", date: "2026/11/03", nums: [2, 23, 24, 25, 29, 39], sp: 31 },
+      { id: "115000101", date: "2026/10/30", nums: [4, 22, 25, 30, 34, 37], sp: 48 },
+      { id: "115000100", date: "2026/10/27", nums: [8, 14, 16, 34, 38, 41], sp: 9 },
+      { id: "115000099", date: "2026/10/23", nums: [9, 10, 33, 38, 40, 45], sp: 2 },
+      { id: "115000098", date: "2026/10/20", nums: [2, 5, 19, 33, 40, 43], sp: 6 },
+      { id: "115000097", date: "2026/10/16", nums: [6, 15, 21, 40, 43, 49], sp: 30 },
+      { id: "115000096", date: "2026/10/13", nums: [3, 31, 35, 36, 47, 48], sp: 32 },
+      { id: "115000095", date: "2026/10/09", nums: [3, 9, 11, 25, 34, 41], sp: 27 },
+      { id: "115000094", date: "2026/10/06", nums: [4, 6, 20, 32, 36, 39], sp: 23 },
+      { id: "115000093", date: "2026/10/02", nums: [4, 14, 20, 26, 40, 47], sp: 42 },
+      { id: "115000092", date: "2026/09/29", nums: [1, 2, 4, 13, 30, 38], sp: 27 },
+      { id: "115000091", date: "2026/09/25", nums: [5, 13, 24, 25, 28, 33], sp: 40 },
+      { id: "115000090", date: "2026/09/22", nums: [14, 15, 18, 30, 35, 45], sp: 10 },
+      { id: "115000089", date: "2026/09/18", nums: [1, 6, 14, 21, 31, 35], sp: 16 },
+      { id: "115000088", date: "2026/09/15", nums: [2, 3, 18, 21, 22, 39], sp: 7 },
+      { id: "115000087", date: "2026/09/11", nums: [12, 15, 19, 27, 43, 48], sp: 25 },
+      { id: "115000086", date: "2026/09/08", nums: [3, 15, 28, 35, 47, 49], sp: 27 },
+      { id: "115000085", date: "2026/09/04", nums: [3, 13, 17, 18, 27, 37], sp: 19 },
+      { id: "115000084", date: "2026/09/01", nums: [10, 16, 19, 26, 29, 48], sp: 30 },
+      { id: "115000083", date: "2026/08/28", nums: [9, 20, 23, 26, 36, 44], sp: 4 },
+      { id: "115000082", date: "2026/08/25", nums: [12, 24, 26, 32, 35, 40], sp: 6 },
+      { id: "115000081", date: "2026/08/21", nums: [8, 14, 23, 24, 26, 47], sp: 30 },
+      { id: "115000080", date: "2026/08/18", nums: [1, 14, 25, 27, 29, 43], sp: 2 },
+      { id: "115000079", date: "2026/08/14", nums: [5, 12, 25, 33, 34, 35], sp: 27 },
+      { id: "115000078", date: "2026/08/11", nums: [8, 12, 16, 24, 29, 46], sp: 10 },
+      { id: "115000077", date: "2026/08/07", nums: [2, 12, 19, 21, 25, 41], sp: 31 },
+      { id: "115000076", date: "2026/08/04", nums: [4, 9, 15, 30, 36, 49], sp: 40 },
+      { id: "115000075", date: "2026/07/31", nums: [11, 20, 23, 33, 34, 44], sp: 10 },
+      { id: "115000074", date: "2026/07/28", nums: [8, 19, 24, 26, 32, 43], sp: 47 },
+      { id: "115000073", date: "2026/07/24", nums: [3, 15, 27, 34, 35, 44], sp: 40 },
+      { id: "115000072", date: "2026/07/21", nums: [2, 8, 15, 26, 35, 46], sp: 11 },
+      { id: "115000071", date: "2026/07/17", nums: [1, 6, 12, 14, 17, 26], sp: 24 },
+      { id: "115000070", date: "2026/07/14", nums: [10, 25, 34, 36, 45, 46], sp: 7 },
+      { id: "115000069", date: "2026/07/10", nums: [3, 4, 15, 18, 29, 49], sp: 13 },
+      { id: "115000068", date: "2026/07/07", nums: [8, 13, 15, 18, 19, 42], sp: 37 },
+      { id: "115000067", date: "2026/07/03", nums: [11, 16, 19, 23, 39, 47], sp: 15 },
+      { id: "115000066", date: "2026/06/30", nums: [4, 10, 16, 29, 36, 45], sp: 14 },
+      { id: "115000065", date: "2026/06/26", nums: [11, 19, 23, 24, 29, 41], sp: 1 },
+      { id: "115000064", date: "2026/06/23", nums: [12, 18, 29, 33, 34, 39], sp: 30 },
+      { id: "115000063", date: "2026/06/19", nums: [4, 12, 28, 29, 35, 48], sp: 38 },
+      { id: "115000062", date: "2026/06/16", nums: [1, 2, 9, 11, 28, 36], sp: 41 },
+      { id: "115000061", date: "2026/06/12", nums: [1, 6, 16, 20, 34, 49], sp: 3 },
+      { id: "115000060", date: "2026/06/09", nums: [13, 18, 25, 39, 40, 46], sp: 31 },
+      { id: "115000059", date: "2026/06/05", nums: [12, 14, 25, 30, 32, 44], sp: 34 },
+      { id: "115000058", date: "2026/06/02", nums: [8, 9, 16, 20, 37, 49], sp: 2 },
+      { id: "115000057", date: "2026/05/29", nums: [20, 26, 29, 31, 37, 49], sp: 30 },
+      { id: "115000056", date: "2026/05/26", nums: [3, 27, 29, 37, 47, 48], sp: 11 },
+      { id: "115000055", date: "2026/05/22", nums: [12, 13, 16, 21, 28, 48], sp: 30 },
+      { id: "115000054", date: "2026/05/19", nums: [4, 20, 22, 26, 38, 47], sp: 27 },
+      { id: "115000053", date: "2026/05/15", nums: [16, 29, 30, 35, 42, 43], sp: 1 },
+      { id: "115000052", date: "2026/05/12", nums: [6, 12, 18, 19, 32, 36], sp: 34 },
+      { id: "115000051", date: "2026/05/08", nums: [10, 18, 25, 28, 39, 43], sp: 48 },
+      { id: "115000050", date: "2026/05/05", nums: [4, 17, 23, 28, 33, 37], sp: 15 },
+      { id: "115000049", date: "2026/05/01", nums: [7, 22, 27, 35, 43, 48], sp: 45 }
+    ];
+
+    const STORAGE_KEY_DRAWS = 'lotto_pwa_live_draws_v1';
+    const STORAGE_KEY_SAVED = 'lotto_pwa_saved_tickets_v1';
+    const fmt = n => (n < 10 ? `0${n}` : `${n}`);
+
+    let DRAW_HISTORY = [];
+    let CHRONO_DRAWS = [];
+    let LATEST_DRAW = null;
+    let NUM_STATS = {};
+    let CO_MATRIX = [];
+    let FOLLOW_MATRIX = [];
+    let PAIR_APPEAR_INDICES = {};
+    let PAIR_CYCLE_LIST = [];
+    let TOP_THREE_TAILS = [5, 9, 6];
+    let CURRENT_TICKETS = [];
+    let WHEEL_SELECTED = new Set();
+
+    // =========================================================================
+    // 2. 自動連線讀取遠端 ./draws.json 並與本地快取智能合併
+    // =========================================================================
+    async function syncRemoteDraws(isManual = false) {
+      const badge = document.getElementById('syncStatusBadge');
+      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> 同步 draws.json 中...`;
+
+      // 先合併內建基準 + 本地手動補登紀錄
+      const mergedMap = new Map();
+      FALLBACK_DRAWS.forEach(d => mergedMap.set(d.id, d));
+      try {
+        const localRaw = localStorage.getItem(STORAGE_KEY_DRAWS);
+        if (localRaw) {
+          JSON.parse(localRaw).forEach(d => {
+            if (d && d.id && Array.isArray(d.nums) && d.nums.length === 6) mergedMap.set(d.id, d);
+          });
+        }
+      } catch (e) {}
+
+      let remoteSuccess = false;
+      try {
+        // 加上時間戳防止手機瀏覽器與 CDN 快取舊檔
+        const res = await fetch(`./draws.json?t=${Date.now()}`, { cache: 'no-store' });
+        if (res.ok) {
+          const remoteData = await res.json();
+          if (Array.isArray(remoteData)) {
+            remoteData.forEach(d => {
+              if (d && d.id && Array.isArray(d.nums) && d.nums.length === 6) {
+                mergedMap.set(d.id, d);
+              }
+            });
+            remoteSuccess = true;
+          }
+        }
+      } catch (err) {
+        console.warn('Offline or local file mode, using cached draws:', err);
+      }
+
+      DRAW_HISTORY = Array.from(mergedMap.values()).sort((a, b) => b.id.localeCompare(a.id));
+      localStorage.setItem(STORAGE_KEY_DRAWS, JSON.stringify(DRAW_HISTORY));
+
+      if (remoteSuccess) {
+        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> 雲端 draws.json 已自動同步`;
+      } else {
+        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700';
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-sky-400"></span> 離線/本地資料庫運作中`;
+      }
+
+      recalculateAllModels();
+      refreshAllViews();
+      if (isManual) {
+        alert(remoteSuccess
+          ? `雲端同步成功！目前已載入至最新第 ${LATEST_DRAW.id} 期 (${LATEST_DRAW.date})。`
+          : `目前未偵測到遠端 draws.json（若您剛部署 GitHub Pages 請稍候 1 分鐘），已使用內建最新 ${LATEST_DRAW.id} 期資料庫！`);
+      }
+    }
+
+    // =========================================================================
+    // 3. 核心統計引擎：計算連莊率、間隔週期、共現矩陣、隔期拖牌矩陣
+    // =========================================================================
+    function recalculateAllModels() {
+      CHRONO_DRAWS = [...DRAW_HISTORY].reverse();
+      LATEST_DRAW = DRAW_HISTORY[0];
+      NUM_STATS = {};
+      CO_MATRIX = Array.from({ length: 50 }, () => Array(50).fill(0));
+      FOLLOW_MATRIX = Array.from({ length: 50 }, () => Array(50).fill(0));
+      PAIR_APPEAR_INDICES = {};
+      PAIR_CYCLE_LIST = [];
+
+      for (let n = 1; n <= 49; n++) {
+        NUM_STATS[n] = {
+          num: n, freq: 0, appearIndices: [],
+          repeatCount: 0, repeatRate: 0, avgGap: 0,
+          currentDrought: 0, cycleRatio: 0
+        };
+      }
+
+      let drawsWithRepeat = 0;
+      CHRONO_DRAWS.forEach((draw, idx) => {
+        const nums = draw.nums;
+        nums.forEach(n => {
+          NUM_STATS[n].freq++;
+          NUM_STATS[n].appearIndices.push(idx);
+        });
+
+        for (let i = 0; i < nums.length; i++) {
+          for (let j = i + 1; j < nums.length; j++) {
+            const a = nums[i], b = nums[j];
+            CO_MATRIX[a][b]++;
+            CO_MATRIX[b][a]++;
+            const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+            if (!PAIR_APPEAR_INDICES[key]) PAIR_APPEAR_INDICES[key] = [];
+            PAIR_APPEAR_INDICES[key].push({ idx, id: draw.id.slice(-3), date: draw.date.slice(5) });
+          }
+        }
+
+        if (idx < CHRONO_DRAWS.length - 1) {
+          const nextNums = CHRONO_DRAWS[idx + 1].nums;
+          let hasRep = false;
+          nums.forEach(a => {
+            if (nextNums.includes(a)) hasRep = true;
+            nextNums.forEach(b => { FOLLOW_MATRIX[a][b]++; });
+          });
+          if (hasRep) drawsWithRepeat++;
+        }
+      });
+
+      const totalDraws = CHRONO_DRAWS.length;
+      for (let n = 1; n <= 49; n++) {
+        const st = NUM_STATS[n];
+        const indices = st.appearIndices;
+        if (indices.length > 1) {
+          const gaps = [];
+          for (let k = 1; k < indices.length; k++) {
+            const g = indices[k] - indices[k - 1];
+            gaps.push(g);
+            if (g === 1) st.repeatCount++;
+          }
+          st.avgGap = +(gaps.reduce((a, b) => a + b, 0) / gaps.length).toFixed(1);
+          const possibleTrans = indices.filter(i => i < totalDraws - 1).length;
+          st.repeatRate = possibleTrans > 0 ? Math.round((st.repeatCount / possibleTrans) * 100) : 0;
+        } else {
+          st.avgGap = +(totalDraws / Math.max(1, indices.length)).toFixed(1);
+        }
+        const lastIdx = indices.length > 0 ? indices[indices.length - 1] : -1;
+        st.currentDrought = lastIdx >= 0 ? (totalDraws - 1 - lastIdx) : totalDraws;
+        st.cycleRatio = st.avgGap > 0 ? +(st.currentDrought / st.avgGap).toFixed(2) : 0;
+      }
+
+      // 動態計算前 3 強勢尾數
+      const tailTotals = Array.from({ length: 10 }, (_, t) => ({ t, sum: 0 }));
+      for (let n = 1; n <= 49; n++) tailTotals[n % 10].sum += NUM_STATS[n].freq;
+      TOP_THREE_TAILS = tailTotals.sort((a, b) => b.sum - a.sum).slice(0, 3).map(x => x.t);
+
+      Object.keys(PAIR_APPEAR_INDICES).forEach(key => {
+        const records = PAIR_APPEAR_INDICES[key];
+        if (records.length >= 3) {
+          const [a, b] = key.split('-').map(Number);
+          const gaps = [];
+          for (let k = 1; k < records.length; k++) gaps.push(records[k].idx - records[k - 1].idx);
+          const avgGap = +(gaps.reduce((x, y) => x + y, 0) / gaps.length).toFixed(1);
+          const currentWait = totalDraws - 1 - records[records.length - 1].idx;
+          PAIR_CYCLE_LIST.push({ a, b, count: records.length, avgGap, minGap: Math.min(...gaps), currentWait, records });
+        }
+      });
+      PAIR_CYCLE_LIST.sort((x, y) => y.count - x.count || x.avgGap - y.avgGap);
+
+      const nextId = (parseInt(LATEST_DRAW.id, 10) + 1).toString();
+      document.getElementById('headerLatestInfo').textContent = `${LATEST_DRAW.id}期 (${LATEST_DRAW.date})`;
+      document.getElementById('headerTotalDraws').textContent = totalDraws;
+      document.getElementById('latestDrawTitle').textContent = `📌 最新 (${LATEST_DRAW.id}期) 獎號與連莊診斷`;
+      document.getElementById('nextDrawTitle').textContent = `⏱️ 下期 (${nextId}期) 黃金回補 ＋ 拖牌 TOP 6`;
+      const repPct = Math.round((drawsWithRepeat / Math.max(1, totalDraws - 1)) * 100);
+      document.getElementById('overallRepeatRateBadge').textContent = `期數連莊率 ${repPct}%`;
+
+      populateAnchorSelect();
+    }
+
+    function populateAnchorSelect() {
+      const sel = document.getElementById('anchorNumber');
+      const prevVal = sel.value;
+      const topHot = Object.values(NUM_STATS).sort((a, b) => b.freq - a.freq).slice(0, 8);
+      sel.innerHTML = `<option value="0">🎲 不鎖定膽碼 (全自動四維尋優)</option>` +
+        topHot.map(st => `<option value="${st.num}">🔥 鎖定 ${fmt(st.num)} 號 (開出${st.freq}次・均隔${st.avgGap}期)</option>`).join('');
+      if ([...sel.options].some(o => o.value === prevVal)) sel.value = prevVal;
+      else if (topHot.length > 0) sel.value = topHot[0].num.toString();
+    }
+
+    function getBallClass(n, anchorNum = 0) {
+      if (n === anchorNum) return 'ball-anchor';
+      if (LATEST_DRAW && LATEST_DRAW.nums.includes(n)) return 'ball-repeat';
+      if (NUM_STATS[n] && NUM_STATS[n].freq >= 10) return 'ball-hot';
+      if (NUM_STATS[n] && NUM_STATS[n].freq <= 4) return 'ball-cold';
+      return 'ball-normal';
+    }
+
+    // =========================================================================
+    // 4. 儀表板與四維選號引擎
+    // =========================================================================
+    function renderTopDashboard() {
+      document.getElementById('lastDrawRepeatBar').innerHTML = LATEST_DRAW.nums.map(n => {
+        const st = NUM_STATS[n];
+        return `
+          <button onclick="setAsAnchorAndSwitch(${n})" class="flex items-center gap-2 bg-slate-950/90 hover:bg-slate-800 border border-emerald-500/40 px-2.5 py-1.5 rounded-xl transition">
+            <span class="ball ball-sm ball-repeat">${fmt(n)}</span>
+            <div class="text-left leading-tight">
+              <div class="text-xs font-bold text-white">開${st.freq}次・連莊${st.repeatRate}%</div>
+              <div class="text-[10px] text-emerald-300">均隔 ${st.avgGap} 期</div>
+            </div>
+          </button>
+        `;
+      }).join('');
+
+      const candidates = getTopCycleAndFollowCandidates(6);
+      document.getElementById('cycleDueBar').innerHTML = candidates.map(item => `
+        <button onclick="setAsAnchorAndSwitch(${item.num})" class="bg-slate-950/90 hover:bg-slate-800 border border-amber-500/30 p-2 rounded-xl flex items-center gap-2 transition text-left">
+          <span class="ball ball-sm ${getBallClass(item.num)}">${fmt(item.num)}</span>
+          <div class="leading-tight overflow-hidden">
+            <div class="text-[11px] font-bold text-amber-300 truncate">拖出 ${item.followHits} 次</div>
+            <div class="text-[10px] text-slate-400">隔${item.st.currentDrought}期/均${item.st.avgGap}</div>
+          </div>
+        </button>
+      `).join('');
+    }
+
+    function getTopCycleAndFollowCandidates(limit = 10) {
+      const list = [];
+      for (let n = 1; n <= 49; n++) {
+        if (LATEST_DRAW.nums.includes(n)) continue;
+        const st = NUM_STATS[n];
+        let followHits = 0;
+        LATEST_DRAW.nums.forEach(prev => { followHits += FOLLOW_MATRIX[prev][n]; });
+        let cycleScore = 0;
+        if (st.freq >= 6 && st.cycleRatio >= 0.75 && st.cycleRatio <= 1.45) cycleScore = 14;
+        else if (st.freq >= 8 && st.cycleRatio > 1.45) cycleScore = 10;
+        list.push({ num: n, followHits, st, totalScore: followHits * 3.5 + cycleScore + st.freq * 0.9 });
+      }
+      return list.sort((a, b) => b.totalScore - a.totalScore).slice(0, limit);
+    }
+
+    function pickNextNumberFourDim(currentSet, options) {
+      const weights = Array(50).fill(0);
+      const lastDrawSet = new Set(LATEST_DRAW.nums);
+      const currentRepeatCount = [...currentSet].filter(x => lastDrawSet.has(x)).length;
+
+      for (let i = 1; i <= 49; i++) {
+        if (currentSet.has(i)) continue;
+        const st = NUM_STATS[i];
+        const isFromLast = lastDrawSet.has(i);
+
+        if (options.repeatMode === 'exclude' && isFromLast) continue;
+        if (options.repeatMode === 'smart_1' && isFromLast && currentRepeatCount >= 1) {
+          weights[i] = 1; continue;
+        }
+
+        let score = 8 + st.freq * 1.8;
+        if (isFromLast) score += (st.repeatCount * 8) + 6;
+
+        if (options.cycleMode === 'due_boost' && !isFromLast && st.freq >= 5 && st.cycleRatio >= 0.8 && st.cycleRatio <= 1.35) {
+          score += 22;
+        } else if (options.cycleMode === 'overdue_boost' && !isFromLast && st.freq >= 7 && st.cycleRatio >= 1.4) {
+          score += 25;
+        }
+
+        let followHits = 0;
+        LATEST_DRAW.nums.forEach(prev => { followHits += FOLLOW_MATRIX[prev][i]; });
+        score += followHits * 3.2;
+
+        if (options.coWeightMode === 'tail_hot' && TOP_THREE_TAILS.includes(i % 10)) {
+          score += 18;
+        }
+
+        if (options.coWeightMode !== 'off' && currentSet.size > 0) {
+          currentSet.forEach(sel => {
+            const c = CO_MATRIX[sel][i];
+            if (c > 0) score += Math.pow(c, 1.8) * 4.5;
+          });
+        }
+        weights[i] = Math.max(1, Math.round(score));
+      }
+
+      const totalW = weights.reduce((a, b) => a + b, 0);
+      let r = Math.random() * totalW;
+      for (let i = 1; i <= 49; i++) {
+        if (currentSet.has(i)) continue;
+        r -= weights[i];
+        if (r <= 0) return i;
+      }
+      return 1;
+    }
+
+    function validateTicket(nums, filters) {
+      const sum = nums.reduce((a, b) => a + b, 0);
+      const odds = nums.filter(n => n % 2 !== 0).length;
+      const bigs = nums.filter(n => n >= 25).length;
+      const above31 = nums.filter(n => n >= 32).length;
+
+      if (filters.sumRange === '115-185' && (sum < 115 || sum > 185)) return false;
+      if (filters.sumRange === '125-175' && (sum < 125 || sum > 175)) return false;
+      if (filters.ratioFilter === 'normal' && (odds < 2 || odds > 4 || bigs < 2 || bigs > 4)) return false;
+      if (filters.ratioFilter === 'strict' && (odds !== 3 || bigs !== 3)) return false;
+
+      let pairs = 0, maxStreak = 1, cur = 1;
+      for (let i = 1; i < nums.length; i++) {
+        if (nums[i] === nums[i - 1] + 1) { pairs++; cur++; if (cur > maxStreak) maxStreak = cur; }
+        else cur = 1;
+      }
+      if (maxStreak >= 3) return false;
+      if (!filters.allowConsecutive && pairs > 0) return false;
+      if (filters.antiShare && above31 < 2) return false;
+      return true;
+    }
+
+    function generateSmartTickets() {
+      const anchorNum = parseInt(document.getElementById('anchorNumber').value, 10);
+      const repeatMode = document.getElementById('repeatMode').value;
+      const cycleMode = document.getElementById('cycleMode').value;
+      const coWeightMode = document.getElementById('coWeightMode').value;
+      const count = parseInt(document.getElementById('ticketCount').value, 10);
+      const filters = {
+        sumRange: document.getElementById('sumRange').value,
+        ratioFilter: document.getElementById('ratioFilter').value,
+        allowConsecutive: document.getElementById('allowConsecutive').checked,
+        antiShare: document.getElementById('antiShare').checked
+      };
+
+      const valid = [];
+      let attempts = 0;
+      const repeatPool = [...LATEST_DRAW.nums].sort((a, b) => NUM_STATS[b].repeatRate - NUM_STATS[a].repeatRate || NUM_STATS[b].freq - NUM_STATS[a].freq);
+
+      while (valid.length < count && attempts < 35000) {
+        attempts++;
+        const set = new Set();
+        if (anchorNum >= 1 && anchorNum <= 49) set.add(anchorNum);
+        if (repeatMode === 'force_1' && ![...set].some(x => LATEST_DRAW.nums.includes(x))) {
+          set.add(repeatPool[Math.floor(Math.random() * repeatPool.length)]);
+        }
+        while (set.size < 6) {
+          set.add(pickNextNumberFourDim(set, { repeatMode, cycleMode, coWeightMode }));
+        }
+        const sorted = Array.from(set).sort((a, b) => a - b);
+        if (validateTicket(sorted, filters)) {
+          const key = sorted.join(',');
+          if (!valid.some(t => t.join(',') === key)) valid.push(sorted);
+        }
+      }
+      CURRENT_TICKETS = valid;
+      document.getElementById('backtestBanner').classList.add('hidden');
+      renderGeneratedTickets(valid, attempts, anchorNum);
+    }
+
+    function renderGeneratedTickets(tickets, attempts, anchorNum) {
+      const container = document.getElementById('resultsContainer');
+      document.getElementById('filterStats').textContent = `經 ${attempts} 次蒙地卡羅四維模擬，篩選出 ${tickets.length} 組結構最佳解`;
+      container.innerHTML = tickets.map((nums, idx) => {
+        const sum = nums.reduce((a, b) => a + b, 0);
+        const odds = nums.filter(n => n % 2 !== 0).length;
+        const bigs = nums.filter(n => n >= 25).length;
+        const rep = nums.filter(n => LATEST_DRAW.nums.includes(n));
+        const pairs = [];
+        for (let i = 0; i < nums.length; i++) {
+          for (let j = i + 1; j < nums.length; j++) {
+            if (CO_MATRIX[nums[i]][nums[j]] >= 2) pairs.push({ a: nums[i], b: nums[j], c: CO_MATRIX[nums[i]][nums[j]] });
+          }
+        }
+        pairs.sort((a, b) => b.c - a.c);
+
+        return `
+          <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 md:p-4 space-y-2.5">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-mono text-slate-400 bg-slate-900 px-2 py-1 rounded">#{idx + 1}</span>
+                <div class="flex flex-wrap gap-1.5 md:gap-2">
+                  ${nums.map(n => `<span class="ball ${getBallClass(n, anchorNum)}">${fmt(n)}</span>`).join('')}
+                </div>
+              </div>
+              <div class="flex items-center justify-between w-full md:w-auto gap-3">
+                <div class="text-xs text-slate-300 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
+                  總和 <strong class="text-amber-400">${sum}</strong> | 奇偶 <strong class="text-emerald-400">${odds}:${6-odds}</strong> | 大小 <strong class="text-sky-400">${bigs}:${6-bigs}</strong>
+                </div>
+                <button onclick="saveSingleTicket([${nums.join(',')}])" class="px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-lg text-xs font-bold whitespace-nowrap">⭐ 收藏</button>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-1.5 text-[11px] pt-1 border-t border-slate-900">
+              ${rep.length ? `<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">🔁 連莊號: ${rep.map(fmt).join(',')}</span>` : ''}
+              ${pairs.slice(0, 3).map(p => `<span class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300">🔗 ${fmt(p.a)}+${fmt(p.b)} (同框${p.c}次)</span>`).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateAnchorPreview() {
+      const anchor = parseInt(document.getElementById('anchorNumber').value, 10);
+      const el = document.getElementById('anchorCompanionsHint');
+      if (!anchor || !NUM_STATS[anchor]) {
+        el.innerHTML = '不鎖定膽碼，由四維模型自動尋優。';
+        return;
+      }
+      const st = NUM_STATS[anchor];
+      el.innerHTML = `📌 <strong>${fmt(anchor)}號</strong> 累計開 ${st.freq} 次｜連莊率 ${st.repeatRate}%｜平均每 ${st.avgGap} 期開出（遺漏 ${st.currentDrought} 期）`;
+    }
+
+    // =========================================================================
+    // 5. 收藏注單與自動對獎機
+    // =========================================================================
+    function getSavedTickets() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY_SAVED) || '[]'); } catch { return []; }
+    }
+    function saveSingleTicket(nums) {
+      const list = getSavedTickets();
+      const key = nums.join(',');
+      if (!list.some(t => t.join(',') === key)) {
+        list.push(nums);
+        localStorage.setItem(STORAGE_KEY_SAVED, JSON.stringify(list));
+        renderSavedTickets();
+      }
+    }
+    function saveAllCurrentTickets() {
+      CURRENT_TICKETS.forEach(t => saveSingleTicket(t));
+    }
+    function clearSavedTickets() {
+      localStorage.removeItem(STORAGE_KEY_SAVED);
+      renderSavedTickets();
+    }
+    function populateCheckDrawSelect() {
+      const sel = document.getElementById('checkDrawSelect');
+      sel.innerHTML = DRAW_HISTORY.slice(0, 20).map(d =>
+        `<option value="${d.id}">${d.id}期 (${d.date}) - ${d.nums.map(fmt).join(',')}</option>`
+      ).join('');
+    }
+    function renderSavedTickets() {
+      const list = getSavedTickets();
+      const box = document.getElementById('savedTicketsContainer');
+      const targetId = document.getElementById('checkDrawSelect').value || LATEST_DRAW.id;
+      const targetDraw = DRAW_HISTORY.find(d => d.id === targetId) || LATEST_DRAW;
+
+      if (list.length === 0) {
+        box.innerHTML = `<div class="text-xs text-slate-500 py-3 text-center">尚無收藏注單，點擊上方「⭐ 收藏」即可存入並自動核對每期開獎。</div>`;
+        return;
+      }
+
+      box.innerHTML = list.map((nums, idx) => {
+        const hitMain = nums.filter(n => targetDraw.nums.includes(n));
+        const hitSp = nums.includes(targetDraw.sp);
+        let prize = '未中獎';
+        if (hitMain.length === 6) prize = '🏆 頭獎!';
+        else if (hitMain.length === 5 && hitSp) prize = '🥈 貳獎!';
+        else if (hitMain.length === 5) prize = '🥉 參獎!';
+        else if (hitMain.length === 4 && hitSp) prize = '肆獎!';
+        else if (hitMain.length === 4) prize = '伍獎 ($2,000)';
+        else if (hitMain.length === 3 && hitSp) prize = '陸獎 ($1,000)';
+        else if (hitMain.length === 2 && hitSp) prize = '柒獎 ($400)';
+        else if (hitMain.length === 3) prize = '普獎 ($400)';
+
+        return `
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="flex items-center gap-1.5">
+              <span class="text-slate-500 font-mono">#${idx + 1}</span>
+              ${nums.map(n => {
+                const isHit = targetDraw.nums.includes(n) || targetDraw.sp === n;
+                return `<span class="ball ball-sm ${isHit ? 'ball-anchor' : 'bg-slate-800 text-slate-300'}">${fmt(n)}</span>`;
+              }).join('')}
+            </div>
+            <div class="font-bold ${prize === '未中獎' ? 'text-slate-500' : 'text-amber-400'}">
+              對 ${targetDraw.id}期：${prize} (中${hitMain.length}碼${hitSp ? '+特' : ''})
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // =========================================================================
+    // 6. 旋轉矩陣聰明包牌系統
+    // =========================================================================
+    const WHEEL_10_TO_7_TEMPLATES = [
+      [0, 1, 2, 3, 4, 5],
+      [0, 1, 2, 6, 7, 8],
+      [0, 3, 4, 6, 7, 9],
+      [1, 3, 5, 6, 8, 9],
+      [2, 4, 5, 7, 8, 9],
+      [0, 2, 4, 6, 8, 9],
+      [1, 2, 3, 5, 7, 9]
+    ];
+
+    function initWheelGrid() {
+      const grid = document.getElementById('wheelBallGrid');
+      grid.innerHTML = '';
+      for (let i = 1; i <= 49; i++) {
+        const isSel = WHEEL_SELECTED.has(i);
+        const btn = document.createElement('button');
+        btn.className = `p-1.5 md:p-2 rounded-xl border ${isSel ? 'border-amber-400 bg-amber-500/20' : 'border-slate-800 bg-slate-900'} flex flex-col items-center gap-1 transition`;
+        btn.innerHTML = `
+          <span class="ball ball-sm ${getBallClass(i)} ${isSel ? 'ball-selected' : ''}">${fmt(i)}</span>
+          <span class="text-[10px] text-slate-400">開${NUM_STATS[i].freq}</span>
+        `;
+        btn.onclick = () => toggleWheelNum(i);
+        grid.appendChild(btn);
+      }
+      updateWheelInfo();
+    }
+
+    function toggleWheelNum(n) {
+      if (WHEEL_SELECTED.has(n)) WHEEL_SELECTED.delete(n);
+      else if (WHEEL_SELECTED.size < 12) WHEEL_SELECTED.add(n);
+      initWheelGrid();
+    }
+
+    function clearWheelSelection() {
+      WHEEL_SELECTED.clear();
+      initWheelGrid();
+      document.getElementById('wheelResultsBox').innerHTML = '';
+    }
+
+    function loadPresetWheel(type) {
+      WHEEL_SELECTED.clear();
+      const sortedHot = Object.values(NUM_STATS).sort((a, b) => b.freq - a.freq);
+      if (type === 'top10') {
+        sortedHot.slice(0, 10).forEach(s => WHEEL_SELECTED.add(s.num));
+      } else if (type === 'teamHot') {
+        const king = sortedHot[0].num;
+        WHEEL_SELECTED.add(king);
+        const list = [];
+        for (let i = 1; i <= 49; i++) if (i !== king) list.push({ n: i, c: CO_MATRIX[king][i] });
+        list.sort((a, b) => b.c - a.c || NUM_STATS[b.n].freq - NUM_STATS[a.n].freq).slice(0, 9).forEach(x => WHEEL_SELECTED.add(x.n));
+      } else if (type === 'cycle10') {
+        getTopCycleAndFollowCandidates(10).forEach(x => WHEEL_SELECTED.add(x.num));
+      }
+      initWheelGrid();
+      generateWheelTickets();
+    }
+
+    function updateWheelInfo() {
+      const sz = WHEEL_SELECTED.size;
+      document.getElementById('wheelCountText').textContent = sz;
+      const comp = document.getElementById('wheelCostCompare');
+      if (sz >= 8) {
+        const fullComb = (n, k) => {
+          let r = 1;
+          for (let i = 1; i <= k; i++) r = r * (n - i + 1) / i;
+          return Math.round(r);
+        };
+        const full = fullComb(sz, 6);
+        comp.textContent = `全連碰需 ${full} 注 ($${(full * 50).toLocaleString()}) ➔ 縮水僅 7 注 ($350)`;
+      } else {
+        comp.textContent = '請至少選擇 8 ~ 10 個號碼';
+      }
+    }
+
+    function generateWheelTickets() {
+      const arr = Array.from(WHEEL_SELECTED).sort((a, b) => a - b);
+      const box = document.getElementById('wheelResultsBox');
+      if (arr.length < 8) {
+        box.innerHTML = `<div class="text-xs text-rose-400">請至少點選 8 個號碼！</div>`;
+        return;
+      }
+      const tickets = WHEEL_10_TO_7_TEMPLATES.map(tpl => {
+        const picked = tpl.map(idx => arr[idx % arr.length]);
+        const set = new Set(picked);
+        let k = 0;
+        while (set.size < 6) { set.add(arr[k % arr.length]); k++; }
+        return Array.from(set).sort((a, b) => a - b);
+      });
+
+      box.innerHTML = tickets.map((t, i) => `
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono text-amber-400">矩陣 #${i + 1}</span>
+            <div class="flex gap-1.5">${t.map(n => `<span class="ball ball-sm ${getBallClass(n)}">${fmt(n)}</span>`).join('')}</div>
+          </div>
+          <button onclick="saveSingleTicket([${t.join(',')}])" class="px-2.5 py-1 bg-amber-500/20 text-amber-300 rounded text-xs font-bold">⭐ 收藏</button>
+        </div>
+      `).join('');
+    }
+
+    // =========================================================================
+    // 7. 週期、雷達與歷史資料庫渲染
+    // =========================================================================
+    function renderCycleTable(sortBy = 'due') {
+      const tbody = document.getElementById('cycleTableBody');
+      const list = Object.values(NUM_STATS);
+      if (sortBy === 'due') {
+        list.sort((a, b) => {
+          const sa = a.freq >= 5 ? (10 - Math.abs(1.05 - a.cycleRatio) * 5) + a.freq * 0.4 : -10;
+          const sb = b.freq >= 5 ? (10 - Math.abs(1.05 - b.cycleRatio) * 5) + b.freq * 0.4 : -10;
+          return sb - sa;
+        });
+      } else if (sortBy === 'repeat') {
+        list.sort((a, b) => b.repeatRate - a.repeatRate || b.freq - a.freq);
+      } else {
+        list.sort((a, b) => b.freq - a.freq);
+      }
+
+      tbody.innerHTML = list.map(st => {
+        let badge = `<span class="text-slate-500">常態週期中</span>`;
+        if (st.currentDrought === 0) badge = `<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">🔁 上期剛開 (連莊${st.repeatRate}%)</span>`;
+        else if (st.freq >= 5 && st.cycleRatio >= 0.8 && st.cycleRatio <= 1.35) badge = `<span class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-bold">⏰ 黃金回補期</span>`;
+        else if (st.freq >= 7 && st.cycleRatio > 1.35) badge = `<span class="px-2 py-0.5 rounded bg-pink-500/20 text-pink-300">🌋 熱門超跌待反彈</span>`;
+
+        return `
+          <tr class="hover:bg-slate-900/80">
+            <td class="p-3"><span class="ball ball-sm ${getBallClass(st.num)}">${fmt(st.num)}</span></td>
+            <td class="p-3 text-center font-bold">${st.freq} 次</td>
+            <td class="p-3 text-center text-emerald-400 font-bold">${st.repeatCount} 次 (${st.repeatRate}%)</td>
+            <td class="p-3 text-center font-mono text-amber-300">每 ${st.avgGap} 期</td>
+            <td class="p-3 text-center font-mono">${st.currentDrought} 期</td>
+            <td class="p-3">${badge}</td>
+            <td class="p-3 text-right">
+              <button onclick="setAsAnchorAndSwitch(${st.num})" class="px-2.5 py-1 bg-amber-500/20 text-amber-300 rounded text-xs">設為膽碼</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderPairCycleCards() {
+      const grid = document.getElementById('pairCycleGrid');
+      grid.innerHTML = PAIR_CYCLE_LIST.slice(0, 12).map(p => `
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-2">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <span class="ball ball-sm ${getBallClass(p.a)}">${fmt(p.a)}</span>
+              <span>+</span>
+              <span class="ball ball-sm ${getBallClass(p.b)}">${fmt(p.b)}</span>
+              <span class="text-xs font-bold text-amber-400 ml-1">同框 ${p.count} 次</span>
+            </div>
+            <span class="text-[11px] text-sky-300">均隔 ${p.avgGap} 期同框</span>
+          </div>
+          <div class="text-[11px] text-slate-400">
+            距上次同框：<strong>${p.currentWait} 期</strong>｜期別：${p.records.map(r => `${r.id}期`).join(', ')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function initRadarTab() {
+      const topHot = Object.values(NUM_STATS).sort((a, b) => b.freq - a.freq).slice(0, 2);
+      const qBtns = document.getElementById('radarQuickButtons');
+      qBtns.innerHTML = [
+        ...topHot.map(s => `<button onclick="inspectRadar(${s.num})" class="px-3 py-1.5 bg-pink-500/20 text-pink-300 border border-pink-500/40 rounded-lg text-xs font-bold">查熱門 ${fmt(s.num)} 號</button>`),
+        `<button onclick="inspectRadar(${LATEST_DRAW.nums[0]})" class="px-3 py-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded-lg text-xs font-bold">查上期 ${fmt(LATEST_DRAW.nums[0])} 號</button>`
+      ].join('');
+
+      const grid = document.getElementById('radarBallGrid');
+      grid.innerHTML = '';
+      for (let i = 1; i <= 49; i++) {
+        const b = document.createElement('button');
+        b.className = `ball ball-sm ${getBallClass(i)} hover:scale-110`;
+        b.textContent = fmt(i);
+        b.onclick = () => inspectRadar(i);
+        grid.appendChild(b);
+      }
+      inspectRadar(topHot[0].num);
+    }
+
+    function inspectRadar(target) {
+      const st = NUM_STATS[target];
+      const co = [], fol = [];
+      for (let n = 1; n <= 49; n++) {
+        if (n !== target && CO_MATRIX[target][n] > 0) co.push({ n, c: CO_MATRIX[target][n] });
+        if (FOLLOW_MATRIX[target][n] > 0) fol.push({ n, c: FOLLOW_MATRIX[target][n] });
+      }
+      co.sort((a, b) => b.c - a.c || NUM_STATS[b.n].freq - NUM_STATS[a.n].freq);
+      fol.sort((a, b) => b.c - a.c || NUM_STATS[b.n].freq - NUM_STATS[a.n].freq);
+
+      document.getElementById('radarDetailBox').innerHTML = `
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-3">
+            <span class="ball ball-anchor">${fmt(target)}</span>
+            <div>
+              <div class="font-bold text-white">${fmt(target)} 號 雙雷達分析（累計 ${st.freq} 次・均隔 ${st.avgGap} 期）</div>
+              <div class="text-xs text-slate-400">目前遺漏 ${st.currentDrought} 期｜連莊率 ${st.repeatRate}%</div>
+            </div>
+          </div>
+          <button onclick="setAsAnchorAndSwitch(${target})" class="px-3 py-1.5 bg-amber-500 text-slate-950 font-bold rounded-lg text-xs">🎯 設為選號膽碼</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <h4 class="text-xs font-bold text-amber-400 mb-2">🔗 同一期最常一起出現拍檔 TOP 6</h4>
+            <div class="grid grid-cols-2 gap-2">
+              ${co.slice(0, 6).map(x => `
+                <div class="bg-slate-900 p-2 rounded-lg border border-slate-800 flex items-center gap-2">
+                  <span class="ball ball-sm ${getBallClass(x.n)}">${fmt(x.n)}</span>
+                  <span class="text-xs">同框 <strong class="text-amber-400">${x.c}</strong> 次</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          <div>
+            <h4 class="text-xs font-bold text-emerald-400 mb-2">⏭️ 當 ${fmt(target)} 號開出後，下一期最常拖出誰 TOP 6</h4>
+            <div class="grid grid-cols-2 gap-2">
+              ${fol.slice(0, 6).map(x => `
+                <div class="bg-slate-900 p-2 rounded-lg border border-slate-800 flex items-center gap-2">
+                  <span class="ball ball-sm ${getBallClass(x.n)}">${fmt(x.n)}</span>
+                  <span class="text-xs">拖出 <strong class="text-emerald-400">${x.c}</strong> 次</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderTailStats() {
+      const tails = Array.from({ length: 10 }, (_, t) => ({ tail: t, total: 0, nums: [] }));
+      for (let n = 1; n <= 49; n++) {
+        const t = n % 10;
+        tails[t].total += NUM_STATS[n].freq;
+        tails[t].nums.push({ n, f: NUM_STATS[n].freq });
+      }
+      document.getElementById('tailStatsGrid').innerHTML = tails.map(item => `
+        <div class="bg-slate-950 border border-slate-800 p-3 rounded-xl space-y-2">
+          <div class="flex justify-between items-center">
+            <span class="font-bold text-amber-400 text-sm">${item.tail} 尾家族</span>
+            <span class="text-xs bg-slate-900 px-2 py-0.5 rounded text-slate-300">共 ${item.total} 次</span>
+          </div>
+          <div class="flex flex-wrap gap-1">
+            ${item.nums.map(x => `<span class="text-[11px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-300">${fmt(x.n)}(${x.f})</span>`).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderHistoryTable() {
+      const q = document.getElementById('historySearch').value.trim();
+      const tbody = document.getElementById('historyTableBody');
+      tbody.innerHTML = DRAW_HISTORY.map((d, idx) => {
+        if (q) {
+          const qn = parseInt(q, 10);
+          if (!isNaN(qn) && !d.nums.includes(qn) && d.sp !== qn && !d.id.includes(q)) return '';
+        }
+        const prev = idx < DRAW_HISTORY.length - 1 ? DRAW_HISTORY[idx + 1] : null;
+        const prevSet = prev ? new Set(prev.nums) : new Set();
+        let rep = 0;
+        const balls = d.nums.map(n => {
+          const isR = prevSet.has(n);
+          if (isR) rep++;
+          return `<span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold mr-1 ${isR ? 'ball-repeat' : getBallClass(n)}">${fmt(n)}</span>`;
+        }).join('');
+        const sum = d.nums.reduce((a, b) => a + b, 0);
+        return `
+          <tr class="hover:bg-slate-900/80">
+            <td class="p-3 font-mono text-amber-400">${d.id}</td>
+            <td class="p-3 text-slate-300">${d.date}</td>
+            <td class="p-3">${balls}</td>
+            <td class="p-3 text-center"><span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold bg-purple-500/30 text-purple-200">${fmt(d.sp)}</span></td>
+            <td class="p-3 text-center">${rep ? `<span class="text-emerald-400 font-bold">連莊 ${rep}</span>` : '-'}</td>
+            <td class="p-3 text-center font-mono">${sum}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function backtestCurrentTickets() {
+      const banner = document.getElementById('backtestBanner');
+      const hits = [];
+      CURRENT_TICKETS.forEach((t, idx) => {
+        DRAW_HISTORY.forEach(d => {
+          const m = t.filter(n => d.nums.includes(n));
+          const sp = t.includes(d.sp);
+          if (m.length >= 3 || (m.length === 2 && sp)) {
+            hits.push(`第 ${idx + 1} 注於 ${d.id}期 (${d.date}) 對中 <strong>${m.map(fmt).join(', ')}${sp ? '+特' + fmt(d.sp) : ''}</strong>`);
+          }
+        });
+      });
+      banner.classList.remove('hidden');
+      banner.innerHTML = hits.length
+        ? `<div class="font-bold text-emerald-300">🎉 過去 ${DRAW_HISTORY.length} 期回測共命中 ${hits.length} 次獎項：</div>
+           <ul class="list-disc pl-5 max-h-36 overflow-y-auto space-y-1">${hits.map(h => `<li>${h}</li>`).join('')}</ul>`
+        : `<div>📊 這組號碼在過去 ${DRAW_HISTORY.length} 期未曾重複消耗 3 碼以上，屬全新待開組合！</div>`;
+    }
+
+    function setAsAnchorAndSwitch(num) {
+      const sel = document.getElementById('anchorNumber');
+      if (![...sel.options].some(o => parseInt(o.value, 10) === num)) {
+        const opt = document.createElement('option');
+        opt.value = num;
+        opt.textContent = `🎯 鎖定 ${fmt(num)} 號 (開出${NUM_STATS[num].freq}次)`;
+        sel.appendChild(opt);
+      }
+      sel.value = num;
+      updateAnchorPreview();
+      switchTab('generator');
+      generateSmartTickets();
+    }
+
+    function switchTab(tab) {
+      ['generator', 'wheel', 'cycle', 'radar', 'history'].forEach(t => {
+        document.getElementById(`view-${t}`).classList.add('hidden');
+        document.getElementById(`tab-${t}`).classList.remove('tab-active');
+        document.getElementById(`tab-${t}`).classList.add('text-slate-400');
+      });
+      document.getElementById(`view-${tab}`).classList.remove('hidden');
+      document.getElementById(`tab-${tab}`).classList.add('tab-active');
+      document.getElementById(`tab-${tab}`).classList.remove('text-slate-400');
+    }
+
+    function openAddDrawModal() {
+      const nextId = (parseInt(LATEST_DRAW.id, 10) + 1).toString();
+      document.getElementById('newDrawId').value = nextId;
+      document.getElementById('newDrawDate').value = new Date().toISOString().slice(0, 10).replace(/-/g, '/');
+      document.getElementById('addDrawModal').classList.remove('hidden');
+      document.getElementById('addDrawModal').classList.add('flex');
+    }
+    function closeAddDrawModal() {
+      document.getElementById('addDrawModal').classList.add('hidden');
+      document.getElementById('addDrawModal').classList.remove('flex');
+    }
+    function submitNewDraw() {
+      const id = document.getElementById('newDrawId').value.trim();
+      const date = document.getElementById('newDrawDate').value.trim();
+      const rawNums = document.getElementById('newDrawNums').value.split(/[\s,，]+/).map(Number).filter(n => n >= 1 && n <= 49);
+      const sp = parseInt(document.getElementById('newDrawSp').value, 10);
+      const uniqueNums = Array.from(new Set(rawNums)).sort((a, b) => a - b);
+      if (!id || uniqueNums.length !== 6 || isNaN(sp) || sp < 1 || sp > 49) {
+        alert('請確認輸入剛好 6 個不重複的正選號碼 (1~49) 以及 1 個特別號！');
+        return;
+      }
+      const existingIdx = DRAW_HISTORY.findIndex(d => d.id === id);
+      if (existingIdx >= 0) DRAW_HISTORY[existingIdx] = { id, date, nums: uniqueNums, sp };
+      else DRAW_HISTORY.unshift({ id, date, nums: uniqueNums, sp });
+      DRAW_HISTORY.sort((a, b) => b.id.localeCompare(a.id));
+      localStorage.setItem(STORAGE_KEY_DRAWS, JSON.stringify(DRAW_HISTORY));
+      recalculateAllModels();
+      refreshAllViews();
+      closeAddDrawModal();
+    }
+
+    function refreshAllViews() {
+      renderTopDashboard();
+      updateAnchorPreview();
+      populateCheckDrawSelect();
+      generateSmartTickets();
+      renderSavedTickets();
+      loadPresetWheel('top10');
+      renderCycleTable('due');
+      renderPairCycleCards();
+      initRadarTab();
+      renderTailStats();
+      renderHistoryTable();
+    }
+
+    window.onload = () => {
+      setupPWA();
+      syncRemoteDraws(false);
+    };
+  </script>
+</body>
+</html>
