@@ -1,0 +1,54 @@
+name: Auto Update Taiwan Lotto
+on:
+  schedule:
+    # 台灣時間每週二、五 21:35 (UTC 13:35) 自動執行
+    - cron: '35 13 * * 2,5'
+  workflow_dispatch: # 允許手動一鍵測試執行
+
+jobs:
+  update-lotto:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies & Fetch latest draw
+        run: |
+          pip install requests beautifulsoup4
+          python -c "
+          import json, re, requests
+          from bs4 import BeautifulSoup
+
+          with open('draws.json', 'r', encoding='utf-8') as f:
+              draws = json.load(f)
+
+          res = requests.get('https://lotto.ctbcbank.com/result_all.htm', timeout=15)
+          res.encoding = 'utf-8'
+          soup = BeautifulSoup(res.text, 'html.parser')
+          text = soup.get_text(' ', strip=True)
+
+          m = re.search(r'大樂透\s*期別\s*第(\d+)\s*期\s*開獎日期\s*民國\s*(\d+)\s*年\s*(\d+)\s*月\s*(\d+)\s*日.*?依大小順序排列：\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+特別號：\s*(\d+)', text)
+          if m:
+              draw_id = m.group(1)
+              year = int(m.group(2)) + 1911
+              date_str = f'{year}/{int(m.group(3)):02d}/{int(m.group(4)):02d}'
+              nums = sorted([int(m.group(i)) for i in range(5, 11)])
+              sp = int(m.group(11))
+              if not any(d['id'] == draw_id for d in draws):
+                  draws.insert(0, {'id': draw_id, 'date': date_str, 'nums': nums, 'sp': sp})
+                  with open('draws.json', 'w', encoding='utf-8') as f:
+                      json.dump(draws, f, ensure_ascii=False, indent=2)
+                  print(f'Updated to {draw_id}')
+          "
+
+      - name: Commit and push if updated
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "Lotto Auto Bot"
+          git add draws.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto update lotto draws" && git push)
